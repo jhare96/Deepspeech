@@ -105,10 +105,10 @@ class DeepSpeech(object):
         filenames_list must be a list of str valued filepaths
     '''
     
-    y_pred = model.BiRnn(model.x,seq_len=None,batch_size=-1)
+    model.y_pred = model.BiRnn(model.x,seq_len=None,batch_size=-1)
   
     loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2( 
-                        labels=model.y, logits=y_pred))
+                        labels=model.y, logits=model.y_pred))
     
     print("loss shape",loss.shape)
     optimizer = tf.train.AdamOptimizer(learning_rate=model.learning_rate,
@@ -135,22 +135,6 @@ class DeepSpeech(object):
       average_loss[epoch] /= len(audio_input_data)
       print("epoch ", epoch, " Loss ", average_loss[epoch])
 
-    correct = 0
-    tot_phns = 0
-    for i in range(len(audio_input_data)):
-      y = text_input_data[i]
-      test_pred = model.sess.run(tf.nn.softmax(y_pred), feed_dict={model.x: audio_input_data[i], model.y : text_input_data[i]})
-      for i in range(y.shape[0]):
-        y_argmax = timit_load_data.ix_to_phn[np.argmax(y[i])]
-        ypred_argmax = timit_load_data.ix_to_phn[np.argmax(test_pred[i])]#*np.exp(unigram))]
-        tot_phns +=1
-        #print("y_argmax",y_argmax,"ypred_argmax",ypred_argmax)
-        if(y_argmax == ypred_argmax):
-          correct +=1
-        #print("y:", timit_load_data.ix_to_phn[np.argmax(y[i])], " y_pred:", timit_load_data.ix_to_phn[np.argmax(test_pred[i]*np.exp(unigram))])
-
-    print("correct phonemes predicted", correct, "/", tot_phns, "=", 100*(correct/tot_phns), "%")
-
     #batch_size = audio_input_data.shape[0]
     #seq_len = tf.to_int32(tf.fill([batch_size], 61))
     #test_pred = sess.run(tf.nn.ctc_beam_search_decoder(tf.nn.softmax(tf.reshape(y_pred,shape=[1,batch_size,62])), seq_len, merge_repeated=False), feed_dict={model.x: audio_input_data, model.y : y})
@@ -160,7 +144,7 @@ class DeepSpeech(object):
   def test(model, load_data_function, filenames_list):
     ''' test phoneme accuracy for timed labeled phonemes
     '''
-    y_pred = model.BiRnn(model.x,seq_len=None,batch_size=-1)
+    #y_pred = model.BiRnn(model.x,seq_len=None,batch_size=-1)
     unigram = timit_load_data.get_unigram("bg261_t0_d05.1N.LM.txt")
     #test_pred = sess.run(tf.nn.softmax(y_pred), feed_dict={model.x: audio_input_data, model.y : y})
     correct = 0
@@ -172,13 +156,13 @@ class DeepSpeech(object):
     with open(r"processed_timit_phns.pickle", "rb") as input_file:
       text_input_data = pickle.load(input_file)
 
-    #print(text_input_data[0])
+    print(text_input_data[0].shape)
       
     #for i in range(len(filenames_list)):
       #audio_input_data, y = load_data_function(filenames_list[i])
     for i in range(len(audio_input_data)):
       y = text_input_data[i]
-      test_pred = model.sess.run(tf.nn.softmax(y_pred), feed_dict={model.x: audio_input_data[i], model.y : text_input_data[i]})
+      test_pred = model.sess.run(tf.nn.softmax(model.y_pred), feed_dict={model.x: audio_input_data[i], model.y : text_input_data[i]})
       for i in range(y.shape[0]):
         y_argmax = timit_load_data.ix_to_phn[np.argmax(y[i])]
         ypred_argmax = timit_load_data.ix_to_phn[np.argmax(test_pred[i])]#*np.exp(unigram))]
@@ -191,11 +175,11 @@ class DeepSpeech(object):
     print("correct phonemes predicted", correct, "/", tot_phns, "=", 100*(correct/tot_phns), "%")
 
 
-n_size = 256
+n_size = 2048
 net = DeepSpeech(n_size,n_size,n_size,n_size,61,80)
 net.init_var()
 print("phonemes len", len(timit_load_data.phones))
 timit_filepaths = list(sorted(set(open("timit/allfilelist.txt", 'r').read().split("\n"))))
 #print(timit_filepaths[1:-1])
 net.train(net.load_timit_data, timit_filepaths[1:10])
-##net.test(net.load_timit_data, timit_filepaths[1:10])
+net.test(net.load_timit_data, timit_filepaths[1:10])
