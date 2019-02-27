@@ -179,7 +179,14 @@ n_size = 128
 net = DeepSpeech(n_size,n_size,n_size,n_size,61,80)
 net.init_var()
 print("phonemes len", len(timit_load_data.phones))
-timit_filepaths = list(sorted(set(open("timit/allfilelist.txt", 'r').read().split("\n"))))
-#print(timit_filepaths[1:-1])
-net.train(net.load_timit_data, timit_filepaths[1:])
-net.test(net.load_timit_data, timit_filepaths[1:])
+
+timit_train_filepaths = list(sorted(set(open("trainfilelist.txt", 'r').read().split("\n"))))
+for i in range(1, len(timit_train_filepaths)):
+  timit_train_filepaths[i] = "/share/spandh.ami1/data/audvis/asr/studio/us/timit/NIST_1-1.1/timit/" + str(timit_train_filepaths[i])
+
+timit_test_filepaths = list(sorted(set(open("testfilelist.txt", 'r').read().split("\n"))))
+for i in range(1, len(timit_test_filepaths)):
+  timit_test_filepaths[i] = "/share/spandh.ami1/data/audvis/asr/studio/us/timit/NIST_1-1.1/timit/" + str(timit_test_filepaths[i])
+
+net.train(net.load_timit_data, timit_train_filepaths[1:])
+net.test(net.load_timit_data, timit_test_filepaths[1:])
