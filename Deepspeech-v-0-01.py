@@ -116,21 +116,21 @@ class DeepSpeech(object):
     init = tf.global_variables_initializer()
     model.sess.run(init)
 
-    with open(r"processed_timit_audio.pickle", "rb") as input_file:
-      audio_input_data = pickle.load(input_file)
-
-    with open(r"processed_timit_phns.pickle", "rb") as input_file:
-      text_input_data = pickle.load(input_file)
+##    with open(r"processed_timit_audio.pickle", "rb") as input_file:
+##      audio_input_data = pickle.load(input_file)
+##
+##    with open(r"processed_timit_phns.pickle", "rb") as input_file:
+##      text_input_data = pickle.load(input_file)
 
     model.print = True
     #print("output shape",model.sess.run(tf.shape(model.output_fw), feed_dict = {model.x: audio_input_data[0], model.y: text_input_data[0]}))
-    num_epochs = 5
-    average_loss = np.zeros((num_epochs))
+    num_epochs = 20
     for epoch in range(num_epochs):
-      #for i in range(len(filenames_list)):
-        #audio_input_data, y = load_data_function(filenames_list[i])
-      for i in range(len(audio_input_data)):
-        _,l = model.sess.run([optimizer,loss], feed_dict = {model.x: audio_input_data[i], model.y: text_input_data[i]})
+      average_loss = np.zeros((num_epochs))
+      for i in range(len(filenames_list)):
+        audio_input_data, y = load_data_function(filenames_list[i])
+      #for i in range(np.int(0.7*len(audio_input_data))):
+        _,l = model.sess.run([optimizer,loss], feed_dict = {model.x: audio_input_data, model.y: y})
         average_loss[epoch] += l
       average_loss[epoch] /= len(audio_input_data)
       print("epoch ", epoch, " Loss ", average_loss[epoch])
@@ -150,22 +150,22 @@ class DeepSpeech(object):
     correct = 0
     tot_phns = 0
 
-    with open(r"processed_timit_audio.pickle", "rb") as input_file:
-      audio_input_data = pickle.load(input_file)
-
-    with open(r"processed_timit_phns.pickle", "rb") as input_file:
-      text_input_data = pickle.load(input_file)
+##    with open(r"processed_timit_audio.pickle", "rb") as input_file:
+##      audio_input_data = pickle.load(input_file)
+##
+##    with open(r"processed_timit_phns.pickle", "rb") as input_file:
+##      text_input_data = pickle.load(input_file)
 
     print(text_input_data[0].shape)
       
-    #for i in range(len(filenames_list)):
-      #audio_input_data, y = load_data_function(filenames_list[i])
-    for i in range(len(audio_input_data)):
-      y = text_input_data[i]
-      test_pred = model.sess.run(tf.nn.softmax(model.y_pred), feed_dict={model.x: audio_input_data[i], model.y : text_input_data[i]})
+    for i in range(len(filenames_list)):
+      audio_input_data, y = load_data_function(filenames_list[i])
+    #for i in range(np.int(0.7*len(audio_input_data)), len(audio_input_data)):
+      #y = text_input_data[i]
+      test_pred = model.sess.run(tf.nn.softmax(model.y_pred), feed_dict={model.x: audio_input_data, model.y : y})
       for i in range(y.shape[0]):
         y_argmax = timit_load_data.ix_to_phn[np.argmax(y[i])]
-        ypred_argmax = timit_load_data.ix_to_phn[np.argmax(test_pred[i])]#*np.exp(unigram))]
+        ypred_argmax = timit_load_data.ix_to_phn[np.argmax(test_pred[i]*np.exp(unigram))]
         tot_phns +=1
         #print("y_argmax",y_argmax,"ypred_argmax",ypred_argmax)
         if(y_argmax == ypred_argmax):
@@ -175,11 +175,11 @@ class DeepSpeech(object):
     print("correct phonemes predicted", correct, "/", tot_phns, "=", 100*(correct/tot_phns), "%")
 
 
-n_size = 2048
+n_size = 128
 net = DeepSpeech(n_size,n_size,n_size,n_size,61,80)
 net.init_var()
 print("phonemes len", len(timit_load_data.phones))
 timit_filepaths = list(sorted(set(open("timit/allfilelist.txt", 'r').read().split("\n"))))
 #print(timit_filepaths[1:-1])
-net.train(net.load_timit_data, timit_filepaths[1:10])
-net.test(net.load_timit_data, timit_filepaths[1:10])
+net.train(net.load_timit_data, timit_filepaths[1:])
+net.test(net.load_timit_data, timit_filepaths[1:])
