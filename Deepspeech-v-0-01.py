@@ -52,8 +52,8 @@ class DeepSpeech(object):
     model.w4 = tf.Variable(tf.random_normal([model.h3_size, model.h4_size], stddev = tf.sqrt(2/model.h3_size)), dtype=tf.float32)
     model.b4 = tf.Variable(tf.zeros([model.h4_size]), dtype=tf.float32)
 
-    model.cell_fw = tf.nn.rnn_cell.BasicRNNCell(model.h3_size, activation=tf.nn.relu)
-    model.cell_bw = tf.nn.rnn_cell.BasicRNNCell(model.h3_size, activation=tf.nn.relu)
+    model.cell_fw = tf.nn.rnn_cell.LSTMCell(model.h3_size, activation=tf.nn.relu, cell_clip=model.relu_clip, initializer=tf.initializers.he_normal())
+    model.cell_bw = tf.nn.rnn_cell.LSTMCell(model.h3_size, activation=tf.nn.relu, cell_clip=model.relu_clip, initializer=tf.initializers.he_normal())
 
     model.w5 = tf.Variable(tf.random_normal([model.h4_size, model.h5_size], stddev = tf.sqrt(2/model.h4_size)), dtype=tf.float32)
     model.b5 = tf.Variable(tf.zeros([model.h5_size]), dtype=tf.float32)
