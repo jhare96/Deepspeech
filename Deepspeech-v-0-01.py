@@ -15,7 +15,7 @@ class DeepSpeech(object):
     model.relu_clip = 20
     model.sess = tf.Session()
     ##Hyper Parameters
-    model.learning_rate = 0.0001
+    model.learning_rate = 0.001
     model.beta1 = 0.9
     model.beta2 = 0.999
     model.epsilon = 1e-8
@@ -52,8 +52,8 @@ class DeepSpeech(object):
     model.w4 = tf.Variable(tf.random_normal([model.h3_size, model.h4_size], stddev = tf.sqrt(2/model.h3_size)), dtype=tf.float32)
     model.b4 = tf.Variable(tf.zeros([model.h4_size]), dtype=tf.float32)
 
-    model.cell_fw = tf.nn.rnn_cell.LSTMCell(model.h3_size, cell_clip=model.relu_clip)
-    model.cell_bw = tf.nn.rnn_cell.LSTMCell(model.h3_size, cell_clip=model.relu_clip)
+    model.cell_fw = tf.nn.rnn_cell.GRUCell(model.h3_size)
+    model.cell_bw = tf.nn.rnn_cell.GRUCell(model.h3_size)
 
     model.w5 = tf.Variable(tf.random_normal([model.h4_size, model.h5_size], stddev = tf.sqrt(2/model.h4_size)), dtype=tf.float32)
     model.b5 = tf.Variable(tf.zeros([model.h5_size]), dtype=tf.float32)
@@ -89,7 +89,7 @@ class DeepSpeech(object):
       print(model.sess.run(tf.shape(output_fw)))
       print(model.sess.run(tf.shape(output_bw)))
       
-    h4 = tf.reshape(tf.add(model.output_fw,model.output_bw), [batch_size,model.h3_size])
+    h4 = tf.reshape(tf.add(model.output_fw,model.output_bw), [seq_len,model.h3_size])
     h5 = tf.minimum(tf.nn.relu(tf.add(tf.matmul(h4, model.w5), model.b5)), model.relu_clip)
     ##h6 = tf.nn.softmax(h5)
 
@@ -127,7 +127,7 @@ class DeepSpeech(object):
 
     model.print = True
     #print("output shape",model.sess.run(tf.shape(model.output_fw), feed_dict = {model.x: audio_input_data[0], model.y: text_input_data[0]}))
-    num_epochs = 2
+    num_epochs = 10
     average_loss = np.zeros((num_epochs))
     for epoch in range(num_epochs):
       for i in range(len(filenames_list)):
@@ -135,7 +135,7 @@ class DeepSpeech(object):
       #for i in range(np.int(0.7*len(audio_input_data))):
         _,l = model.sess.run([optimizer,loss], feed_dict = {model.x: audio_input_data, model.y: y})
         average_loss[epoch] += l
-      average_loss[epoch] /= len(audio_input_data)
+      average_loss[epoch] /= len(filenames_list)
       print("epoch ", epoch, " Loss ", average_loss[epoch])
 
     #batch_size = audio_input_data.shape[0]
@@ -159,16 +159,18 @@ class DeepSpeech(object):
 ##    with open(r"processed_timit_phns.pickle", "rb") as input_file:
 ##      text_input_data = pickle.load(input_file)
 
-   ##print(text_input_data[0].shape)
-      
+    #phone_pred_count = np.zeros((61)) ##collect distribution of phonemes predicted
+    #phone_act_count = np.zeros((61)) ##collect distribution of actual phonemes
     for i in range(len(filenames_list)):
       audio_input_data, y = load_data_function(filenames_list[i])
     #for i in range(np.int(0.7*len(audio_input_data)), len(audio_input_data)):
       #y = text_input_data[i]
       test_pred = model.sess.run(tf.nn.softmax(model.y_pred), feed_dict={model.x: audio_input_data, model.y : y})
       for i in range(y.shape[0]):
-        y_argmax = timit_load_data.ix_to_phn[np.argmax(y[i])]
-        ypred_argmax = timit_load_data.ix_to_phn[np.argmax(test_pred[i]*np.exp(unigram))]
+        y_argmax = [np.argmax(y[i])]
+        ypred_argmax = [np.argmax(test_pred[i]*np.exp(unigram))]
+        #phone_pred_count[ypred_argmax] += 1
+        #phone_act_count[y_argmax] += 1
         tot_phns +=1
         #print("y_argmax",y_argmax,"ypred_argmax",ypred_argmax)
         if(y_argmax == ypred_argmax):
