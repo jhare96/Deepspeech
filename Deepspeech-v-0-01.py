@@ -52,8 +52,8 @@ class DeepSpeech(object):
     model.w4 = tf.Variable(tf.random_normal([model.h3_size, model.h4_size], stddev = tf.sqrt(2/model.h3_size)), dtype=tf.float32)
     model.b4 = tf.Variable(tf.zeros([model.h4_size]), dtype=tf.float32)
 
-    model.cell_fw = tf.nn.rnn_cell.LSTMCell(model.h3_size, activation=tf.nn.relu, cell_clip=model.relu_clip, initializer=tf.initializers.he_normal())
-    model.cell_bw = tf.nn.rnn_cell.LSTMCell(model.h3_size, activation=tf.nn.relu, cell_clip=model.relu_clip, initializer=tf.initializers.he_normal())
+    model.cell_fw = tf.nn.rnn_cell.LSTMCell(model.h3_size, cell_clip=model.relu_clip)
+    model.cell_bw = tf.nn.rnn_cell.LSTMCell(model.h3_size, cell_clip=model.relu_clip)
 
     model.w5 = tf.Variable(tf.random_normal([model.h4_size, model.h5_size], stddev = tf.sqrt(2/model.h4_size)), dtype=tf.float32)
     model.b5 = tf.Variable(tf.zeros([model.h5_size]), dtype=tf.float32)
@@ -193,6 +193,6 @@ for i in range(1, len(timit_test_filepaths)):
 
 timit_filepaths = list(sorted(set(open("timit/allfilelist.txt", 'r').read().split("\n"))))
 print("n_size=", n_size)
-print("number of training examples used", len(timit_train_filepaths[1:]))
+print("number of training examples used", len(timit_train_filepaths[1:500]))
 net.train(net.load_timit_data, timit_train_filepaths[1:])
 net.test(net.load_timit_data, timit_test_filepaths[1:])
