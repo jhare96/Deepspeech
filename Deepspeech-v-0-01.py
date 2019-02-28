@@ -5,7 +5,7 @@ import sys
 import timit_load_data
 import tools
 import pickle
-
+import time
 
 class DeepSpeech(object):
 
@@ -22,13 +22,16 @@ class DeepSpeech(object):
     model.print = False
 
   def load_timit_data(model, filename):
-    audiopath_full = "timit/"+filename+".wav"
-    phonemepath_full = "timit/"+filename+".phn"
+    start = time.time()
+    audiopath_full = filename+".wav"
+    phonemepath_full = filename+".phn"
     #print(audiopath_full)
     audio, text = timit_load_data.get_data(audiopath_full , phonemepath_full)
     audio, text = tools.window_data(audio,text)
     #print("text", text)
     text = tools.text_to_onehot(text,len(timit_load_data.phones))
+    end = time.time()
+    #print("load data time taken : ", end-start)
     #print("text reconstructed", tools.onehot_to_text(text))
     return audio,text 
 
@@ -124,9 +127,9 @@ class DeepSpeech(object):
 
     model.print = True
     #print("output shape",model.sess.run(tf.shape(model.output_fw), feed_dict = {model.x: audio_input_data[0], model.y: text_input_data[0]}))
-    num_epochs = 20
+    num_epochs = 2
+    average_loss = np.zeros((num_epochs))
     for epoch in range(num_epochs):
-      average_loss = np.zeros((num_epochs))
       for i in range(len(filenames_list)):
         audio_input_data, y = load_data_function(filenames_list[i])
       #for i in range(np.int(0.7*len(audio_input_data))):
@@ -156,7 +159,7 @@ class DeepSpeech(object):
 ##    with open(r"processed_timit_phns.pickle", "rb") as input_file:
 ##      text_input_data = pickle.load(input_file)
 
-    print(text_input_data[0].shape)
+   ##print(text_input_data[0].shape)
       
     for i in range(len(filenames_list)):
       audio_input_data, y = load_data_function(filenames_list[i])
@@ -175,7 +178,7 @@ class DeepSpeech(object):
     print("correct phonemes predicted", correct, "/", tot_phns, "=", 100*(correct/tot_phns), "%")
 
 
-n_size = 128
+n_size = 1024
 net = DeepSpeech(n_size,n_size,n_size,n_size,61,80)
 net.init_var()
 print("phonemes len", len(timit_load_data.phones))
@@ -188,5 +191,8 @@ timit_test_filepaths = list(sorted(set(open("testfilelist.txt", 'r').read().spli
 for i in range(1, len(timit_test_filepaths)):
   timit_test_filepaths[i] = "/share/spandh.ami1/data/audvis/asr/studio/us/timit/NIST_1-1.1/timit/" + str(timit_test_filepaths[i])
 
+timit_filepaths = list(sorted(set(open("timit/allfilelist.txt", 'r').read().split("\n"))))
+print("n_size=", n_size)
+print("number of training examples used", len(timit_train_filepaths[1:]))
 net.train(net.load_timit_data, timit_train_filepaths[1:])
 net.test(net.load_timit_data, timit_test_filepaths[1:])
