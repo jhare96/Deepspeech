@@ -55,4 +55,4 @@ def get_unigram(filepath):
   return unigram
 
 
-get_ctc_data("timit/dr1-fvmh0/sa1.wav","timit/dr6-mbma1/sa1.phn")
+#get_ctc_data("timit/dr1-fvmh0/sa1.wav","timit/dr6-mbma1/sa1.phn")
