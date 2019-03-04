@@ -180,7 +180,7 @@ class DeepSpeech(object):
     print("correct phonemes predicted", correct, "/", tot_phns, "=", 100*(correct/tot_phns), "%")
 
 
-n_size = 512
+n_size = 1024
 net = DeepSpeech(n_size,n_size,n_size,n_size,61,80)
 net.init_var()
 print("phonemes len", len(timit_load_data.phones))
@@ -199,6 +199,6 @@ for i in range(1, len(timit_filepaths)):
   
 print("cell type : GRU, activation : relu")
 print("number of neurons per layer", n_size)
-print("number of training examples used", len(timit_filepaths[1:]))
-net.train(net.load_timit_data, timit_filepaths[1:])
-net.test(net.load_timit_data, timit_filepaths[1:])
+print("number of training examples used", len(timit_train_filepaths[1:2000]))
+net.train(net.load_timit_data, timit_train_filepaths[1:2000])
+net.test(net.load_timit_data, timit_test_filepaths[1:])
