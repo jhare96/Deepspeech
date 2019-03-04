@@ -52,8 +52,8 @@ class DeepSpeech(object):
     model.w4 = tf.Variable(tf.random_normal([model.h3_size, model.h4_size], stddev = tf.sqrt(2/model.h3_size)), dtype=tf.float32)
     model.b4 = tf.Variable(tf.zeros([model.h4_size]), dtype=tf.float32)
 
-    model.cell_fw = tf.nn.rnn_cell.GRUCell(model.h3_size)
-    model.cell_bw = tf.nn.rnn_cell.GRUCell(model.h3_size)
+    model.cell_fw = tf.nn.rnn_cell.GRUCell(model.h3_size, activation=tf.nn.relu, kernel_initializer=tf.keras.initializers.he_normal())
+    model.cell_bw = tf.nn.rnn_cell.GRUCell(model.h3_size, activation=tf.nn.relu, kernel_initializer=tf.keras.initializers.he_normal())
 
     model.w5 = tf.Variable(tf.random_normal([model.h4_size, model.h5_size], stddev = tf.sqrt(2/model.h4_size)), dtype=tf.float32)
     model.b5 = tf.Variable(tf.zeros([model.h5_size]), dtype=tf.float32)
@@ -127,7 +127,7 @@ class DeepSpeech(object):
 
     model.print = True
     #print("output shape",model.sess.run(tf.shape(model.output_fw), feed_dict = {model.x: audio_input_data[0], model.y: text_input_data[0]}))
-    num_epochs = 10
+    num_epochs = 1
     average_loss = np.zeros((num_epochs))
     for epoch in range(num_epochs):
       for i in range(len(filenames_list)):
@@ -180,7 +180,7 @@ class DeepSpeech(object):
     print("correct phonemes predicted", correct, "/", tot_phns, "=", 100*(correct/tot_phns), "%")
 
 
-n_size = 1024
+n_size = 512
 net = DeepSpeech(n_size,n_size,n_size,n_size,61,80)
 net.init_var()
 print("phonemes len", len(timit_load_data.phones))
@@ -193,9 +193,12 @@ timit_test_filepaths = list(sorted(set(open("testfilelist.txt", 'r').read().spli
 for i in range(1, len(timit_test_filepaths)):
   timit_test_filepaths[i] = "/share/spandh.ami1/data/audvis/asr/studio/us/timit/NIST_1-1.1/timit/" + str(timit_test_filepaths[i])
 
-#timit_filepaths = list(sorted(set(open("timit/allfilelist.txt", 'r').read().split("\n"))))
-print("cell type : GRU, activation : tanh")
+timit_filepaths = list(sorted(set(open("timit/allfilelist.txt", 'r').read().split("\n"))))
+for i in range(1, len(timit_filepaths)):
+  timit_filepaths[i] = "timit/" + str(timit_filepaths[i])
+  
+print("cell type : GRU, activation : relu")
 print("number of neurons per layer", n_size)
-print("number of training examples used", len(timit_train_filepaths[1:2000]))
-net.train(net.load_timit_data, timit_train_filepaths[1:2000])
-net.test(net.load_timit_data, timit_test_filepaths[1:])
+print("number of training examples used", len(timit_filepaths[1:]))
+net.train(net.load_timit_data, timit_filepaths[1:])
+net.test(net.load_timit_data, timit_filepaths[1:])
