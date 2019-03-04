@@ -4,6 +4,10 @@ import time
 import matplotlib.pyplot as plt
 
 def window_data(audio, text=None):
+   #pre-emphasis
+   pre_emphasis = 0.97
+   audio = numpy.append(audio[0], audio[1:] - pre_emphasis * audio[:-1])
+   
    start_time = time.time()
    frame_size = 0.02 ##s
    frame_stride = 0.01 ##s
@@ -13,6 +17,7 @@ def window_data(audio, text=None):
    frame_step = int(round(frame_stride * sample_rate)) #=160
    signal_length = audio.shape[0]
    num_frames = int(np.ceil(np.abs(signal_length - frame_length) / frame_step))
+
    
    pad_signal_length = num_frames * frame_step + frame_length
    z = np.zeros((pad_signal_length - signal_length))
@@ -48,7 +53,7 @@ def window_data(audio, text=None):
    eps = 0.000000001
    #filter_banks[filter_banks < eps] = eps
    filter_banks = np.where(filter_banks == 0, np.finfo(float).eps, filter_banks)  # Numerical Stability
-   filter_banks = 20 * np.log10(filter_banks)
+   filter_banks = np.log(filter_banks)
 
 ##   plt.imshow(filter_banks.T, cmap='jet',origin='lowest', aspect='auto', extent=(0,signal_length,0,nfilt))
 ##   plt.colorbar()
