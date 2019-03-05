@@ -127,7 +127,7 @@ class DeepSpeech(object):
 
     model.print = True
     #print("output shape",model.sess.run(tf.shape(model.output_fw), feed_dict = {model.x: audio_input_data[0], model.y: text_input_data[0]}))
-    num_epochs = 1
+    num_epochs = 15
     average_loss = np.zeros((num_epochs))
     for epoch in range(num_epochs):
       for i in range(len(filenames_list)):
