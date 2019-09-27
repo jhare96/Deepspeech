@@ -3,10 +3,10 @@ import scipy.stats
 import time
 import matplotlib.pyplot as plt
 
-def window_data(audio, text=None):
+def window_data(audio, num_filters=80, text=None):
    #pre-emphasis
    pre_emphasis = 0.97
-   audio = numpy.append(audio[0], audio[1:] - pre_emphasis * audio[:-1])
+   audio = np.append(audio[0], audio[1:] - pre_emphasis * audio[:-1])
    
    start_time = time.time()
    frame_size = 0.02 ##s
@@ -32,7 +32,7 @@ def window_data(audio, text=None):
    magnitude_audio = np.abs(np.fft.rfft(audio_windowed, NFFT))  # Magnitude spectrum of the FFT
    power_audio = ((1.0 / NFFT) * ((magnitude_audio) ** 2))  # Power Spectrum
 
-   nfilt = 80
+   nfilt = num_filters
    upper_freq_lim = (2595 * np.log10(1 + (sample_rate / 2) / 700))
    mel_points = np.linspace(0,upper_freq_lim,nfilt+2)
    hz_points = (700 * (10**(mel_points / 2595) - 1)) 
@@ -53,20 +53,17 @@ def window_data(audio, text=None):
    eps = 0.000000001
    #filter_banks[filter_banks < eps] = eps
    filter_banks = np.where(filter_banks == 0, np.finfo(float).eps, filter_banks)  # Numerical Stability
-   filter_banks = np.log(filter_banks)
+   filter_banks = 20 * np.log10(filter_banks)
 
 ##   plt.imshow(filter_banks.T, cmap='jet',origin='lowest', aspect='auto', extent=(0,signal_length,0,nfilt))
 ##   plt.colorbar()
 ##   plt.show()
 
-   #print("filterbank shape",filter_banks.shape)
    end = time.time()
-   #print("window time taken", end - start_time)
-   #audio = audio.reshape(-1,20)
-   #audio_windowed = audio[:new_size * block_size].reshape(new_size,block_size)
-   if text is None:
+   if text is None: 
       return filter_banks
    else:
+      # get the most frequent value for each window for time aligned text 
       batch_size = filter_banks.shape[0]
       #text_windowed = text[:batch_size * nfilt].reshape(batch_size,nfilt)
       text_windowed = text[indices.astype(np.int32, copy=False)]
@@ -75,7 +72,10 @@ def window_data(audio, text=None):
       for i in range(text_windowed.shape[0]):
          text_labeled[i,:] = scipy.stats.mode(text_windowed[i,:])[0]
       return filter_banks, text_labeled
-      
+
+def num_frames(signal_length, frame_length=320.0, frame_step=160.0):
+    num_frames = int(np.ceil((signal_length - frame_length) / frame_step))
+    return num_frames
 
 def ix_to_onehot(ix,length):
    label = np.zeros((length))
@@ -96,3 +96,45 @@ def onehot_to_text(onehot):
    for i in range(onehot.shape[0]):
       text[i] = np.argmax(onehot[i])
    return text
+
+
+def fold_batch(x):
+   batch, time = x.shape[0], x.shape[1]
+   return np.reshape(x, (batch*time, *x.shape[2:]))
+
+
+def pad_to_length(x, maxlen, mode='same'):
+   # pad x along axis 0 to 
+   xlen = x.shape[0] 
+   if xlen == maxlen:
+      return x
+   elif xlen > maxlen:
+      raise ValueError('input sequence has greater length (%i) than maxlength supplied (%i)'%(xlen,maxlen) )
+   else:
+      if len(x.shape) == 1:
+         xpad = np.zeros((maxlen))
+      else:
+         xpad = np.zeros((maxlen, *x.shape[1:]))
+      xpad[:xlen] = x
+      if mode == 'same':
+         xpad[xlen:] = x[-1]
+      elif mode == 'zeros':
+         pass
+      elif mode == 'reflect':
+         diff = maxlen - xlen
+         xpad[xlen:] = x[-diff][::-1]
+      
+      return xpad
+
+def pad_labels(x, maxlen, value):
+   xlen = x.shape[0] 
+   if xlen == maxlen:
+      return x
+   elif xlen > maxlen:
+      raise ValueError('padded sequence has greater length than maxlength supplied')
+   else:
+      padded_x = np.ones((maxlen, *x.shape[1:])) * value
+      padded_x[:xlen] = x
+      return padded_x
+
+
