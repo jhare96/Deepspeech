@@ -18,7 +18,7 @@ def relu_clipped(x, clip=20):
 
 
 class DeepspeechTower(object):
-    def __init__(self, hidden_size, num_filter_banks, num_classes, batch_size=1, namescope=None, relu_clip=20):
+    def __init__(self, hidden_size, num_filter_banks, num_classes, batch_size=1, bidirectional=False, rnn_layers=2, namescope=None, relu_clip=20):
         with tf.name_scope(namescope):
             self.num_classes = num_classes
             self.batch_size = batch_size
@@ -27,19 +27,16 @@ class DeepspeechTower(object):
 
             self.input = tf.placeholder(tf.float32, shape=[None, num_filter_banks], name='filterbanks')
             self.sparselabels = tf.SparseTensor(tf.placeholder(tf.int64, shape=[None, 2], name='indices'), tf.placeholder(tf.int32, shape=[None], name='values'), tf.placeholder(tf.int64, shape=[2], name='dense_shape'))
-            #self.labels = tf.placeholder(tf.int32, shape=[None, None], name='labels')
 
             self.seq_len = tf.placeholder(tf.int32, shape=[batch_size], name='seq_length') # unpadded sequence length
-            self.label_len = tf.placeholder(tf.int32, shape=[None], name='label_length') # unpadded label length
             
             with tf.variable_scope('Deepspeech', reuse=tf.AUTO_REUSE):
-                self.h5, self.train_ctc_logits = self.build_Deepspeech(self.input, hidden_size=hidden_size, batch_size=batch_size, seq_len=self.seq_len)
+                self.h5, self.train_ctc_logits = self.build_Deepspeech(self.input, hidden_size=hidden_size, batch_size=batch_size, bidirectional=bidirectional, rnn_layers=rnn_layers, seq_len=self.seq_len)
             print('ctc logits shape', self.train_ctc_logits.get_shape().as_list())
             
             #self.loss = tf.nn.ctc_loss_v2(self.labels, self.train_ctc_logits, self.logit_len, self.label_len, logits_time_major=True)
             #self.loss = tf.keras.backend.ctc_batch_cost(self.labels, tf.nn.softmax(self.train_ctc_logits, axis=-1), self.logit_len, self.label_len)
 
-            #with tf.device('CPU:0'):
             # ctc loss
             self.loss = tf.nn.ctc_loss(self.sparselabels, self.train_ctc_logits, self.seq_len, time_major=True)
             # ctc decoder 
@@ -73,19 +70,20 @@ class DeepspeechTower(object):
         h3_reshape = tf.reshape(h3, shape=[batch_size, -1, hidden_size])
 
         if bidirectional:
-            cell_fw = tf.nn.rnn_cell.GRUCell(hidden_size, activation=activation, kernel_initializer=initialiser)
-            cell_bw = tf.nn.rnn_cell.GRUCell(hidden_size, activation=activation, kernel_initializer=initialiser)
-            outputs, states = tf.nn.bidirectional_dynamic_rnn(cell_fw = cell_fw,
-                                                            cell_bw = cell_bw,
+            cells_fw = [tf.nn.rnn_cell.BasicRNNCell(hidden_size, activation=activation) for i in range(rnn_layers)]
+            fw_stacked_cells = tf.nn.rnn_cell.MultiRNNCell(cells_fw)
+            cells_bw = [tf.nn.rnn_cell.BasicRNNCell(hidden_size, activation=activation) for i in range(rnn_layers)]
+            bw_stacked_cells = tf.nn.rnn_cell.MultiRNNCell(cells_fw)
+            outputs, states = tf.nn.bidirectional_dynamic_rnn(cell_fw = fw_stacked_cells,
+                                                            cell_bw = bw_stacked_cells,
                                                             dtype=tf.float32,
                                                             inputs = h3_reshape,
                                                             sequence_length=seq_len,
-                                                            time_major = False)
+                                                            time_major = False,
+                                                            swap_memory=True)
 
             output_fw, output_bw = outputs
             states_fw, states_bw = states
-            output_fw = tf.minimum(output_fw, self.relu_clip)
-            output_bw = tf.minimum(output_bw, self.relu_clip)
             h4 = tf.reshape(tf.add(output_fw, output_bw), [-1, hidden_size])
         
         else:
@@ -120,7 +118,8 @@ class DeepspeechTower(object):
 ## Deepspeech Model and trainer 
 ## -------------------------------------------------------------------------------------------------------------------------------------
 class Deepspeech(object):
-    def __init__(self, hidden_size, num_filter_banks, num_classes, batch_size=1, sess=None, number_GPUs=1, save_model=True):
+    #self, hidden_size, num_filter_banks, num_classes, batch_size=1, bidirectional=False, rnn_layers=2, namescope=None, relu_clip=20):
+    def __init__(self, hidden_size, num_filter_banks, num_classes, batch_size=1, bidirectional=False, rnn_layers=2, sess=None, number_GPUs=1, save_model=True):
         self.num_classes = num_classes
         self.batch_size = batch_size
         self.num_towers = number_GPUs
@@ -128,9 +127,14 @@ class Deepspeech(object):
         self.Towers = []
         for d in range(number_GPUs):
             with tf.device('gpu:%i'%d):
-                with tf.variable_scope('Tower', tf.AUTO_REUSE):
-                    self.Towers.append(DeepspeechTower(hidden_size, num_filter_banks,
-                            num_classes, batch_size=batch_size, namescope='Tower_%i'%d))
+                with tf.variable_scope('Model', tf.AUTO_REUSE):
+                    self.Towers.append(DeepspeechTower(hidden_size=hidden_size,
+                                                       num_filter_banks=num_filter_banks,
+                                                       num_classes=num_classes,
+                                                       batch_size=batch_size,
+                                                       bidirectional=bidirectional,
+                                                       rnn_layers=rnn_layers,
+                                                       namescope='Tower_%i'%d))
 
         self.optimiser = tf.train.AdamOptimizer(1e-4)
         self.loss = tf.reduce_mean([tower.loss for tower in self.Towers])
@@ -248,30 +252,30 @@ class Deepspeech(object):
 
                 tot_samples += tot_batch_size
                 
-                if tot_samples % validate_freq == 0 and tot_samples >= validate_freq:
-                    print('validation starting', i, tot_samples)
-                    self.save(epoch)
-                    time_taken = time.time() - start
-                    start2 = time.time()
-                    if compute_WER:
-                        wer = self.validate(load_data_function, testfiles, save_to_file=True)
-                        validation_time = time.time()- start2
-                    else:
-                        wer = None
-                    avgloss = avgloss/count
-                    printline = 'epoch {}, total_samples {}, average loss {}, time taken {}, samples per second {}'.format(epoch,
-                                    tot_samples, avgloss, time_taken, validate_freq/time_taken)
-                    if compute_WER:
-                        printline = 'WER {}, '.format(wer) + printline + ', validation_time {}'.format(validation_time)
-                    print(printline)
 
-                    # write average ctc loss to Tensorboard log 
-                    summ_loss = self.sess.run(self.summary_loss, {self.loss_placeholder:avgloss})
-                    self.train_writer.add_summary(summ_loss, tot_samples)
-                    
-                    avgloss = 0
-                    count = 0
-                    start = time.time()
+            print('validation starting', i, tot_samples)
+            self.save(epoch)
+            time_taken = time.time() - start
+            start2 = time.time()
+            if compute_WER:
+                wer = self.validate(load_data_function, testfiles, save_to_file=True)
+                validation_time = time.time()- start2
+            else:
+                wer = None
+            avgloss = avgloss/count
+            printline = 'epoch {}, total_samples {}, average loss {}, time taken {}, samples per second {}'.format(epoch,
+                            tot_samples, avgloss, time_taken, validate_freq/time_taken)
+            if compute_WER:
+                printline = 'WER {}, '.format(wer) + printline + ', validation_time {}'.format(validation_time)
+            print(printline)
+
+            # write average ctc loss to Tensorboard log 
+            summ_loss = self.sess.run(self.summary_loss, {self.loss_placeholder:avgloss})
+            self.train_writer.add_summary(summ_loss, tot_samples)
+            
+            avgloss = 0
+            count = 0
+            start = time.time()
                 
                 
 
@@ -350,7 +354,7 @@ def main():
     test_files = open('LibriSpeech/test-clean-transcripts.txt').read().split('\n')[:-1]
     test_files = [line for line in test_files if len(line) > 2]
     deepspeech = Deepspeech(1024, 80, len(libri_load_data.alphabet)+1, batch_size=30, number_GPUs=2)
-    if not deepspeech.load_weights('models/Deepspeech/2019-09-21_11-49-36/', 'model2'):
+    if not deepspeech.load_weights('models/Deepspeech/2019-09-21_19-33-39/', 'model9'):
         exit()
     #deepspeech.pretrain(load_timit_ctc_chars, files[:], epochs=1)
     print('idx to char', libri_load_data.ix_to_char)
@@ -358,7 +362,7 @@ def main():
     batch_multiple = (len(train_files) // (deepspeech.batch_size * deepspeech.num_towers)) * (deepspeech.batch_size * deepspeech.num_towers)
     print('batch_multiple', batch_multiple)
     
-    deepspeech.train(libri_load_data.load_libri_ctc_chars, train_files, test_files, epochs=10, validate_freq=batch_multiple, compute_WER=True)
+    deepspeech.train(libri_load_data.load_libri_ctc_chars, train_files, test_files, epochs=5, validate_freq=batch_multiple, compute_WER=True)
     print('finished training')
 
     wer = deepspeech.validate(libri_load_data.load_libri_ctc_chars, test_files, save_to_file=True)
