@@ -25,7 +25,11 @@ class DeepspeechTower(object):
             self.relu_clip = relu_clip
 
             rnn_types = {'GRU': self.GRUCell, 'RNN':self.RNNCell, 'LSTM':self.LSTMCell}
-            rnn_cell = rnn_types[rnn_type]
+            try:
+                rnn_cell = rnn_types[rnn_type]
+            except KeyError:
+                raise ValueError('{} is not a valid rnn cell type, valid types are {}'.format(rnn_type,rnn_types.keys()))
+                
 
 
             self.input = tf.placeholder(tf.float32, shape=[None, num_filter_banks], name='filterbanks')
@@ -146,6 +150,7 @@ class Deepspeech(object):
                                                        batch_size=batch_size,
                                                        bidirectional=bidirectional,
                                                        rnn_layers=rnn_layers,
+                                                       rnn_type=rnn_type,
                                                        namescope='Tower_%i'%d))
 
         self.optimiser = tf.train.AdamOptimizer(1e-4)
