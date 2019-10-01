@@ -18,20 +18,23 @@ def relu_clipped(x, clip=20):
 
 
 class DeepspeechTower(object):
-    def __init__(self, hidden_size, num_filter_banks, num_classes, batch_size=1, bidirectional=False, rnn_layers=2, namescope=None, relu_clip=20):
+    def __init__(self, hidden_size, num_filter_banks, num_classes, batch_size=1, bidirectional=False, rnn_layers=2, rnn_type='GRU', namescope=None, relu_clip=20):
         with tf.name_scope(namescope):
             self.num_classes = num_classes
             self.batch_size = batch_size
             self.relu_clip = relu_clip
 
+            rnn_types = {'GRU': self.GRUCell, 'RNN':self.RNNCell, 'LSTM':self.LSTMCell}
+            rnn_cell = rnn_types[rnn_type]
+
 
             self.input = tf.placeholder(tf.float32, shape=[None, num_filter_banks], name='filterbanks')
             self.sparselabels = tf.SparseTensor(tf.placeholder(tf.int64, shape=[None, 2], name='indices'), tf.placeholder(tf.int32, shape=[None], name='values'), tf.placeholder(tf.int64, shape=[2], name='dense_shape'))
-
+            self.dropout = tf.placeholder(tf.bool, shape=(), name='dropout_flag')
             self.seq_len = tf.placeholder(tf.int32, shape=[batch_size], name='seq_length') # unpadded sequence length
             
             with tf.variable_scope('Deepspeech', reuse=tf.AUTO_REUSE):
-                self.h5, self.train_ctc_logits = self.build_Deepspeech(self.input, hidden_size=hidden_size, batch_size=batch_size, bidirectional=bidirectional, rnn_layers=rnn_layers, seq_len=self.seq_len)
+                self.h5, self.train_ctc_logits = self.build_Deepspeech(self.input, hidden_size=hidden_size, rnn_cell=rnn_cell, batch_size=batch_size, bidirectional=bidirectional, rnn_layers=rnn_layers, seq_len=self.seq_len)
             print('ctc logits shape', self.train_ctc_logits.get_shape().as_list())
             
             #self.loss = tf.nn.ctc_loss_v2(self.labels, self.train_ctc_logits, self.logit_len, self.label_len, logits_time_major=True)
@@ -63,16 +66,16 @@ class DeepspeechTower(object):
         # self.pretrain_loss = tf.reduce_mean(tf.square(self.decoded_seq-self.input))
         # self.pretrain_op = self.pretrain_optimiser.minimize(self.pretrain_loss)
 
-    def build_Deepspeech(self, x, hidden_size=1024, batch_size=1, bidirectional=False, rnn_layers=2, activation=relu_clipped, initialiser=tf.initializers.glorot_uniform(), seq_len=None): #tf.initializers.orthogonal
-        h1 = tf.layers.dense(x, hidden_size, activation=activation, kernel_initializer=initialiser)
-        h2 = tf.layers.dense(h1, hidden_size, activation=activation, kernel_initializer=initialiser)
-        h3 = tf.layers.dense(h2, hidden_size, activation=activation, kernel_initializer=initialiser)
+    def build_Deepspeech(self, x, rnn_cell, hidden_size=1024, batch_size=1, bidirectional=False, rnn_layers=2, activation=relu_clipped, initialiser=tf.initializers.glorot_uniform(), seq_len=None, training=True): #tf.initializers.orthogonal
+        h1 = tf.layers.dropout(tf.layers.dense(x, hidden_size, activation=activation, kernel_initializer=initialiser), rate=0.05, training=training)
+        h2 = tf.layers.dropout(tf.layers.dense(h1, hidden_size, activation=activation, kernel_initializer=initialiser), rate=0.05, training=training)
+        h3 = tf.layers.dropout(tf.layers.dense(h2, hidden_size, activation=activation, kernel_initializer=initialiser), rate=0.05, training=training)
         h3_reshape = tf.reshape(h3, shape=[batch_size, -1, hidden_size])
 
         if bidirectional:
-            cells_fw = [tf.nn.rnn_cell.BasicRNNCell(hidden_size, activation=activation) for i in range(rnn_layers)]
+            cells_fw = [rnn_cell(hidden_size) for i in range(rnn_layers)]
             fw_stacked_cells = tf.nn.rnn_cell.MultiRNNCell(cells_fw)
-            cells_bw = [tf.nn.rnn_cell.BasicRNNCell(hidden_size, activation=activation) for i in range(rnn_layers)]
+            cells_bw = [rnn_cell(hidden_size) for i in range(rnn_layers)]
             bw_stacked_cells = tf.nn.rnn_cell.MultiRNNCell(cells_fw)
             outputs, states = tf.nn.bidirectional_dynamic_rnn(cell_fw = fw_stacked_cells,
                                                             cell_bw = bw_stacked_cells,
@@ -87,7 +90,7 @@ class DeepspeechTower(object):
             h4 = tf.reshape(tf.add(output_fw, output_bw), [-1, hidden_size])
         
         else:
-            cells = [tf.nn.rnn_cell.BasicRNNCell(hidden_size, activation=activation) for i in range(rnn_layers)]
+            cells = [rnn_cell(hidden_size) for i in range(rnn_layers)]
             stacked_cells = tf.nn.rnn_cell.MultiRNNCell(cells)
             outputs, states = tf.nn.dynamic_rnn(cell= stacked_cells,
                                                 dtype=tf.float32,
@@ -99,9 +102,18 @@ class DeepspeechTower(object):
             h4 = tf.reshape(outputs, [-1, hidden_size])
 
         
-        h5 = tf.minimum(tf.layers.dense(h4, hidden_size, activation=activation, kernel_initializer=initialiser), self.relu_clip)
-        ctc_logits = tf.reshape(tf.layers.dense(h5, self.num_classes, activation=None), shape=[batch_size, -1 , self.num_classes])
+        h5 = tf.layers.dropout(tf.layers.dense(h4, hidden_size, activation=activation, kernel_initializer=initialiser), rate=0.05, training=training)
+        ctc_logits = tf.layers.dropout(tf.reshape(tf.layers.dense(h5, self.num_classes, activation=None), shape=[batch_size, -1 , self.num_classes]), rate=0.05, training=training)
         return h5, tf.transpose(ctc_logits,perm=[1,0,2])
+
+    def RNNCell(self, hidden_size, activation=relu_clipped):
+        return tf.nn.rnn_cell.BasicRNNCell(hidden_size, activation=activation)
+    
+    def GRUCell(self, hidden_size):
+        return tf.nn.rnn_cell.GRUCell(hidden_size)
+    
+    def LSTMCell(self, hidden_size):
+        return tf.nn.rnn_cell.LSTMCell(hidden_size)
 
 
     def decoder(self, x, input_size, activation=tf.nn.relu, initialiser=tf.initializers.he_normal):
@@ -119,7 +131,7 @@ class DeepspeechTower(object):
 ## -------------------------------------------------------------------------------------------------------------------------------------
 class Deepspeech(object):
     #self, hidden_size, num_filter_banks, num_classes, batch_size=1, bidirectional=False, rnn_layers=2, namescope=None, relu_clip=20):
-    def __init__(self, hidden_size, num_filter_banks, num_classes, batch_size=1, bidirectional=False, rnn_layers=2, sess=None, number_GPUs=1, save_model=True):
+    def __init__(self, hidden_size, num_filter_banks, num_classes, batch_size=1, bidirectional=False, rnn_layers=2, rnn_type='GRU', sess=None, number_GPUs=1, save_model=True):
         self.num_classes = num_classes
         self.batch_size = batch_size
         self.num_towers = number_GPUs
@@ -215,7 +227,7 @@ class Deepspeech(object):
         return(indices, values, dense_shape)
 
     
-    def get_tower_batches(self, load_data_function, files, i):
+    def get_tower_batches(self, load_data_function, files, i, train=True):
         feed_dict = {}
         for j in range(len(self.Towers)):
             audio_waveforms, labels = zip(*[load_data_function(file) for file in files[i+(self.batch_size*j):i+(self.batch_size*(j+1))]])
@@ -229,6 +241,7 @@ class Deepspeech(object):
             feed_dict[self.Towers[j].input] = filterbanks
             feed_dict[self.Towers[j].sparselabels] = self.labels_to_sparse(labels)
             feed_dict[self.Towers[j].seq_len] = fb_lens
+            feed_dict[self.Towers[j].dropout] = train
             #feed_dict[self.Towers[j].label_len] = lb_lens
         
         return feed_dict
@@ -244,6 +257,7 @@ class Deepspeech(object):
         for epoch in range(epochs):
             np.random.shuffle(trainfiles) # shuffle list to ensure all samples are seen over many epochs 
             for i in range(0, batch_multiple, tot_batch_size):
+                #start3 = time.time()
                 feed_dict = self.get_tower_batches(load_data_function, trainfiles, i)
                 # compute ctc loss over all towers
                 loss, _ = self.sess.run([self.loss, self.train_op], feed_dict=feed_dict)
@@ -251,6 +265,8 @@ class Deepspeech(object):
                 count += 1
 
                 tot_samples += tot_batch_size
+                #time_taken = time.time() - start3
+                #print('time taken {}, fps {}'.format(time_taken, tot_batch_size / time_taken))
                 
 
             print('validation starting', i, tot_samples)
@@ -296,7 +312,8 @@ class Deepspeech(object):
             
             feed_dict = {self.Towers[0].input:filterbanks,
                         self.Towers[0].sparselabels:self.labels_to_sparse(labels),
-                        self.Towers[0].seq_len:fb_lens}
+                        self.Towers[0].seq_len:fb_lens,
+                        self.Towers[0].dropout:False}
 
             start3 = time.time()
             outputs = self.sess.run(self.Towers[0].batch_ctc_decoded, feed_dict=feed_dict)
@@ -314,8 +331,8 @@ class Deepspeech(object):
             
             
             for k in range(self.batch_size):
-                predtext = ''.join(libri_load_data.ix_to_char[idx] for idx in values[k])#.replace('<\\START>', '<\\START><\\SPACE>')
-                strlabels = ''.join(libri_load_data.ix_to_char[idx] for idx in labels[k])#.replace('<\\START>', '<\\START><\\SPACE>')
+                predtext = ''.join(libri_load_data.ix_to_char[idx] for idx in values[k])
+                strlabels = ''.join(libri_load_data.ix_to_char[idx] for idx in labels[k])
         
                 wer += WER.WER(strlabels.split('<SPACE>'), predtext.split('<SPACE>')) # Levenshtein distance metric 
             
@@ -353,16 +370,16 @@ def main():
     print(len(train_files))
     test_files = open('LibriSpeech/test-clean-transcripts.txt').read().split('\n')[:-1]
     test_files = [line for line in test_files if len(line) > 2]
-    deepspeech = Deepspeech(1024, 80, len(libri_load_data.alphabet)+1, batch_size=30, number_GPUs=2)
-    if not deepspeech.load_weights('models/Deepspeech/2019-09-21_19-33-39/', 'model9'):
-        exit()
+    deepspeech = Deepspeech(2048, 40, len(libri_load_data.alphabet)+1, batch_size=16, bidirectional=True, rnn_layers=1, rnn_type='GRU', number_GPUs=2, save_model=True)
+    #if not deepspeech.load_weights('models/Deepspeech/2019-09-21_19-33-39/', 'model9'):
+        #exit()
     #deepspeech.pretrain(load_timit_ctc_chars, files[:], epochs=1)
     print('idx to char', libri_load_data.ix_to_char)
     
     batch_multiple = (len(train_files) // (deepspeech.batch_size * deepspeech.num_towers)) * (deepspeech.batch_size * deepspeech.num_towers)
     print('batch_multiple', batch_multiple)
     
-    deepspeech.train(libri_load_data.load_libri_ctc_chars, train_files, test_files, epochs=5, validate_freq=batch_multiple, compute_WER=True)
+    deepspeech.train(libri_load_data.load_libri_ctc_chars, train_files, test_files, epochs=20, validate_freq=batch_multiple, compute_WER=True)
     print('finished training')
 
     wer = deepspeech.validate(libri_load_data.load_libri_ctc_chars, test_files, save_to_file=True)
