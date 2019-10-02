@@ -185,6 +185,8 @@ class Deepspeech(object):
         self.train_writer = tf.summary.FileWriter('logs/DeepSpeech/'+current_time+'/', graph=self.sess.graph)
         self.loss_placeholder = tf.placeholder(tf.float32, shape=())
         self.summary_loss = tf.summary.scalar('ctc_loss', self.loss_placeholder)
+        self.WER_placeholder = tf.placeholder(tf.float32, shape=())
+        self.summary_WER = tf.summary.scalar('WER', self.loss_placeholder)
     
     def save(self, checkpoint):
         self.saver.save(self.sess, self.model_dir + 'model'+str(checkpoint)+'.ckpt')
@@ -291,7 +293,8 @@ class Deepspeech(object):
             print(printline)
 
             # write average ctc loss to Tensorboard log 
-            summ_loss = self.sess.run(self.summary_loss, {self.loss_placeholder:avgloss})
+            summ_loss, summ_WER = self.sess.run([self.summary_loss, self.summary_WER], {self.loss_placeholder:avgloss, self.WER_placeholder:WER})
+            self.train_writer.add_summary(summ_WER, tot_samples)
             self.train_writer.add_summary(summ_loss, tot_samples)
             
             avgloss = 0
