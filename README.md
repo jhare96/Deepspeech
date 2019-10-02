@@ -1,6 +1,6 @@
 # Deepspeech
 
-This repository contains a Tensorflow implementation of Baidu's [Deepspeech](https://arxiv.org/abs/1412.5567) architecture, a neural speech-to-text model, inspired by the [Mozilla implementation](https://github.com/mozilla/DeepSpeech).
+This repository contains a Tensorflow implementation of Baidu's [Deepspeech](https://arxiv.org/abs/1412.5567) architecture, a neural speech-to-text model. This repository was inspired by the [Mozilla's implementation](https://github.com/mozilla/DeepSpeech).
 
 # Architecture 
 The model architecture is a sequence-to-sequence Artificial Neural Network (ANN) with Connectionist Temporal Classification (CTC), 
